@@ -1,0 +1,81 @@
+# Headless Service Example
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-headless
+  namespace: roboshop
+  labels:
+    project: roboshop
+    tier: db
+    component: mongodb
+spec:
+  clusterIP: None # This makes the service headless
+  selector:
+    # labels are used as selectors
+    project: roboshop
+    tier: db
+    component: mongodb
+  ports:
+  - port: 27017 # Service port
+    targetPort: 27017 # Container port
+    protocol: TCP
+---
+# StatefulSet Example
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: roboshop
+spec:
+  selector:
+    matchLabels:
+      project: roboshop
+      tier: db
+      component: mongodb
+  serviceName: "mongodb-headless" # has to match the headless service name
+  replicas: 3 # by default is 1
+  template:
+    metadata:
+      labels:
+        project: roboshop
+        tier: db
+        component: mongodb
+    spec:
+      containers:
+      - name: mongodb
+        image: adepusaikumar/mongodb:1.0.0
+        ports:
+        - containerPort: 27017  # just for reference, wont affect actual port used by mongodb
+        volumeMounts:
+        - name: mongodb
+          mountPath: /data/db
+  volumeClaimTemplates:   # this is used to create PVCs for each replica
+  - metadata:
+      name: mongodb # this name is used in volumeMounts
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "roboshop-ebs" # this is the storage class we created earlier
+      resources:
+        requests:
+          storage: 1Gi
+---
+# This is a regular service to expose the StatefulSet to other components like load balancer, backend, etc.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: roboshop
+  labels:
+    project: roboshop
+    tier: db
+    component: mongodb
+spec:
+  selector:
+    # lables are used as selectors
+    project: roboshop
+    tier: db
+    component: mongodb
+  ports:
+    - port: 27017
+      targetPort: 27017
+      protocol: TCP
