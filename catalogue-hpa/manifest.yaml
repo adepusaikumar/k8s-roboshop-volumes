@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catalogue
+  namespace: roboshop
+  labels:
+    project: roboshop
+    component: catalogue
+    environment: dev
+    tier: backend
+data:
+  MONGO_URL: "mongodb://mongodb:27017/catalogue"
+  MONGO: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogue
+  namespace: roboshop
+  # These lables are for deployment
+  labels:
+    project: roboshop
+    component: catalogue
+    environment: dev
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    # using these labels replica set selects the pod
+    matchLabels:
+      project: roboshop
+      component: catalogue
+      tier: backend
+  template:
+    metadata:
+      # these labels are for pod
+      labels:
+        project: roboshop
+        component: catalogue
+        tier: backend
+    spec:
+      # This is pod definition, pod is subset of replicaset
+      containers:
+        - name: catalogue
+          image: adepusaikumar/catalogue:1.0.0
+          imagePullPolicy: Always # safe to pull everytime, there may be images with same version rebuilt and pushed
+          envFrom:
+            - configMapRef:
+                name: catalogue
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+
+          # these are used to check whether the application is up and running or not.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 2
+            failureThreshold: 30
+          # these are used to check whether the application is ready to accept traffic or not, if this fails then the pod will be removed from service endpoints
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            failureThreshold: 10
+          # used to check whether the application is running or not, if this fails then the pod will be restarted
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            failureThreshold: 2
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalogue
+  namespace: roboshop
+  labels:
+    project: roboshop
+    component: catalogue
+    tier: backend
+spec:
+  selector:
+    # labels are used as selectors
+    project: roboshop
+    component: catalogue
+    tier: backend
+  ports:
+    - protocol: TCP
+      port: 8080  # service port
+      targetPort: 8080  #container port
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: catalogue
+  namespace: roboshop
+  labels:
+    project: roboshop
+    component: catalogue
+    environment: dev
+    tier: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: catalogue
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 20
+      
